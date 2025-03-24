@@ -4,6 +4,7 @@ if ('serviceWorker' in navigator) {
 
 const dbName = "DrugDB";
 const storeName = "Drugs";
+let allDrugs = [];
 
 // Open IndexedDB
 function openDB() {
@@ -20,12 +21,12 @@ function openDB() {
     });
 }
 
-// Save data to IndexedDB
+// Save drug names to IndexedDB
 async function saveToDB(data) {
     let db = await openDB();
     let tx = db.transaction(storeName, "readwrite");
     let store = tx.objectStore(storeName);
-    data.forEach(item => store.put({ name: item[0], details: item }));
+    data.forEach(name => store.put({ name }));
 }
 
 // Load drug names from IndexedDB
@@ -41,19 +42,23 @@ async function loadFromDB() {
 
 // Fetch drug names from GAS or IndexedDB
 async function loadDrugNames() {
+    const scriptURL = "https://script.google.com/macros/s/AKfycbxmDPoeI1_8DAoweqeiEKDd1y02idcemrxim4xrfJKJWj3RDBg78sJEh1ZsqRPPAJ_A/exec?action=getNames";
+    
     if (navigator.onLine) {
-        fetch("https://script.google.com/macros/s/AKfycbwe3o5TOihj-GZhVEe1pCDbFZjnbz4dapJMcBgxyC50W161UmbBQLWpLyUbZ5igUxws/exec?action=getNames")
-            .then(response => response.json())
-            .then(data => {
-                saveToDB(data);
-                allDrugs = data.map(drug => drug[0]); 
-            });
+        try {
+            let response = await fetch(scriptURL);
+            let data = await response.json();
+            allDrugs = data;
+            saveToDB(data); // Save for offline use
+        } catch (error) {
+            console.error("Error fetching drug names:", error);
+        }
     } else {
         allDrugs = await loadFromDB();
     }
 }
 
-// Search drug
+// Search drug and show suggestions
 function searchDrug() {
     let input = document.getElementById("search").value.toLowerCase();
     let suggestions = allDrugs.filter(drug => drug.toLowerCase().includes(input));
@@ -73,20 +78,25 @@ function searchDrug() {
 }
 
 // Fetch drug details
-function fetchDrugDetails(drug) {
+async function fetchDrugDetails(drug) {
+    const scriptURL = `https://script.google.com/macros/s/AKfycbxmDPoeI1_8DAoweqeiEKDd1y02idcemrxim4xrfJKJWj3RDBg78sJEh1ZsqRPPAJ_A/exec?action=getDetails&drug=${encodeURIComponent(drug)}`;
+
     if (navigator.onLine) {
-        fetch(`https://script.google.com/macros/s/AKfycbwe3o5TOihj-GZhVEe1pCDbFZjnbz4dapJMcBgxyC50W161UmbBQLWpLyUbZ5igUxws/exec?action=getDetails&drug=${drug}`)
-            .then(response => response.json())
-            .then(displayResult);
+        try {
+            let response = await fetch(scriptURL);
+            let data = await response.json();
+            displayResult(data);
+        } catch (error) {
+            console.error("Error fetching details:", error);
+        }
     } else {
-        loadFromDB().then(data => {
-            let result = data.find(d => d.name.toLowerCase() === drug.toLowerCase());
-            displayResult(result ? result.details : []);
-        });
+        let result = await loadFromDB();
+        let found = result.find(d => d.name.toLowerCase() === drug.toLowerCase());
+        displayResult(found ? found.details : []);
     }
 }
 
-// Display results
+// Display drug details
 function displayResult(data) {
     let resultDiv = document.getElementById("result");
     if (!data || data.length === 0) {
