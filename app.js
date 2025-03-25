@@ -21,20 +21,22 @@ function openDB() {
     });
 }
 
-// Save data to IndexedDB
+// Save data to IndexedDB (Clears old data before saving new)
 async function saveToDB(data) {
     let db = await openDB();
     let tx = db.transaction(storeName, "readwrite");
     let store = tx.objectStore(storeName);
+    
+    store.clear(); // Ensure IndexedDB has only the latest data
 
     data.forEach(item => {
         store.put({
-            name: item[0],  // Generic Name (Column A)
-            details: item   // Full array of details (Columns A to N)
+            name: item[0],   // Store the generic name as key
+            details: item    // Store the full drug details array
         });
     });
 
-    console.log("Data saved to IndexedDB:", data); // Debug log
+    console.log("IndexedDB Updated:", data);
 }
 
 // Load all stored drugs from IndexedDB
@@ -44,7 +46,7 @@ async function loadFromDB() {
     let store = tx.objectStore(storeName);
     return new Promise((resolve) => {
         let request = store.getAll();
-        request.onsuccess = () => resolve(request.result); // Return all stored drugs
+        request.onsuccess = () => resolve(request.result);
     });
 }
 
@@ -54,8 +56,8 @@ async function loadDrugNames() {
         fetch("https://script.google.com/macros/s/AKfycbz1FVf-bQMlJPCyXOuowz7CVKyX07OOw6l4Q7dfXcPoB7UgUl02oHNz2Y4c-vFFEMZG/exec?action=getNames")
             .then(response => response.json())
             .then(async (latestData) => {
-                console.log("Updating IndexedDB with the latest data...");
-                await saveToDB(latestData); // Overwrite IndexedDB every time
+                console.log("Updating IndexedDB...");
+                await saveToDB(latestData); // Update IndexedDB
                 allDrugs = latestData.map(drug => drug[0]); // Extract drug names
             })
             .catch(error => console.error("Error fetching drug names:", error));
@@ -85,27 +87,26 @@ function searchDrug() {
     });
 }
 
-// Fetch drug details (online & offline)
-function fetchDrugDetails(drug) {
+// Fetch drug details (Online & Offline Mode)
+async function fetchDrugDetails(drug) {
     if (navigator.onLine) {
         fetch(`https://script.google.com/macros/s/AKfycbz1FVf-bQMlJPCyXOuowz7CVKyX07OOw6l4Q7dfXcPoB7UgUl02oHNz2Y4c-vFFEMZG/exec?action=getDetails&drug=${drug}`)
             .then(response => response.json())
             .then(displayResult)
             .catch(error => console.error("Error fetching drug details:", error));
     } else {
-        openDB().then(db => {
-            let tx = db.transaction(storeName, "readonly");
-            let store = tx.objectStore(storeName);
-            let request = store.get(drug);
-            request.onsuccess = () => {
-                if (request.result) {
-                    displayResult(request.result.details); // Use stored details
-                } else {
-                    displayResult([]); // Show "No details found" if not in IndexedDB
-                }
-            };
-            request.onerror = () => displayResult([]);
-        });
+        let data = await loadFromDB(); // Get all stored drugs
+        console.log("IndexedDB Data:", data); // Debugging
+
+        let result = data.find(d => d.name.toLowerCase() === drug.toLowerCase());
+
+        if (result && result.details) {
+            console.log("Retrieved Details:", result.details); // Debugging
+            displayResult(result.details);
+        } else {
+            console.warn("Drug not found in IndexedDB:", drug);
+            displayResult([]); // Show "No details found"
+        }
     }
 }
 
@@ -118,7 +119,7 @@ function displayResult(data) {
     }
 
     let headers = ["Generic Name", "Brand", "FUKKM System/Group", "MDC", "NEML", "Method of Purchase", "Category", "Indications", "Prescribing Restrictions", "Dosage", "Adverse Reactions", "Contraindications", "Interactions", "Precautions"];
-    let formattedText = headers.map((header, i) => `<strong>${header}</strong><br>${data[i]}<br><br>`).join("");
+    let formattedText = headers.map((header, i) => `<strong>${header}</strong><br>${data[i] || "N/A"}<br><br>`).join("");
 
     resultDiv.innerHTML = `<div style='font-family: Arial, sans-serif; line-height: 1.5;'>${formattedText}</div>`;
 }
