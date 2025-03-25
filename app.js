@@ -26,17 +26,17 @@ async function saveToDB(data) {
     let db = await openDB();
     let tx = db.transaction(storeName, "readwrite");
     let store = tx.objectStore(storeName);
-    data.forEach(item => store.put({ name: item[0], details: item.slice(1) })); // Store full details
+    data.forEach(item => store.put({ name: item[0], details: item })); // Store full details (including name)
 }
 
-// Load drug names from IndexedDB
+// Load all stored drugs from IndexedDB
 async function loadFromDB() {
     let db = await openDB();
     let tx = db.transaction(storeName, "readonly");
     let store = tx.objectStore(storeName);
     return new Promise((resolve) => {
         let request = store.getAll();
-        request.onsuccess = () => resolve(request.result); // Returns full objects
+        request.onsuccess = () => resolve(request.result); // Return all stored drugs
     });
 }
 
@@ -45,9 +45,10 @@ async function loadDrugNames() {
     if (navigator.onLine) {
         fetch("https://script.google.com/macros/s/AKfycbz1FVf-bQMlJPCyXOuowz7CVKyX07OOw6l4Q7dfXcPoB7UgUl02oHNz2Y4c-vFFEMZG/exec?action=getNames")
             .then(response => response.json())
-            .then(data => {
-                saveToDB(data);
-                allDrugs = data.map(drug => drug[0]); // Extract names
+            .then(async (latestData) => {
+                console.log("Updating IndexedDB with the latest data...");
+                await saveToDB(latestData); // Overwrite IndexedDB every time
+                allDrugs = latestData.map(drug => drug[0]); // Extract drug names
             })
             .catch(error => console.error("Error fetching drug names:", error));
     } else {
@@ -76,7 +77,7 @@ function searchDrug() {
     });
 }
 
-// Fetch drug details
+// Fetch drug details (online & offline)
 function fetchDrugDetails(drug) {
     if (navigator.onLine) {
         fetch(`https://script.google.com/macros/s/AKfycbz1FVf-bQMlJPCyXOuowz7CVKyX07OOw6l4Q7dfXcPoB7UgUl02oHNz2Y4c-vFFEMZG/exec?action=getDetails&drug=${drug}`)
@@ -89,8 +90,13 @@ function fetchDrugDetails(drug) {
             let store = tx.objectStore(storeName);
             let request = store.get(drug);
             request.onsuccess = () => {
-                displayResult(request.result ? request.result.details : []);
+                if (request.result) {
+                    displayResult(request.result.details); // Use stored details
+                } else {
+                    displayResult([]); // Show "No details found" if not in IndexedDB
+                }
             };
+            request.onerror = () => displayResult([]);
         });
     }
 }
