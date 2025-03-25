@@ -26,7 +26,15 @@ async function saveToDB(data) {
     let db = await openDB();
     let tx = db.transaction(storeName, "readwrite");
     let store = tx.objectStore(storeName);
-    data.forEach(item => store.put({ name: item[0], details: item })); // Store full details (including name)
+
+    data.forEach(item => {
+        store.put({
+            name: item[0],  // Generic Name (Column A)
+            details: item   // Full array of details (Columns A to N)
+        });
+    });
+
+    console.log("Data saved to IndexedDB:", data); // Debug log
 }
 
 // Load all stored drugs from IndexedDB
