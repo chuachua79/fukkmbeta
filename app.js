@@ -26,7 +26,7 @@ async function saveToDB(data) {
     let db = await openDB();
     let tx = db.transaction(storeName, "readwrite");
     let store = tx.objectStore(storeName);
-    data.forEach(item => store.put({ name: item[0], details: item }));
+    data.forEach(item => store.put({ name: item[0], details: item.slice(1) })); // Store full details
 }
 
 // Load drug names from IndexedDB
@@ -36,7 +36,7 @@ async function loadFromDB() {
     let store = tx.objectStore(storeName);
     return new Promise((resolve) => {
         let request = store.getAll();
-        request.onsuccess = () => resolve(request.result.map(drug => drug.name));
+        request.onsuccess = () => resolve(request.result); // Returns full objects
     });
 }
 
@@ -48,9 +48,12 @@ async function loadDrugNames() {
             .then(data => {
                 saveToDB(data);
                 allDrugs = data.map(drug => drug[0]); // Extract names
-            });
+            })
+            .catch(error => console.error("Error fetching drug names:", error));
     } else {
-        allDrugs = await loadFromDB();
+        loadFromDB().then(data => {
+            allDrugs = data.map(drug => drug.name);
+        });
     }
 }
 
@@ -78,11 +81,16 @@ function fetchDrugDetails(drug) {
     if (navigator.onLine) {
         fetch(`https://script.google.com/macros/s/AKfycbz1FVf-bQMlJPCyXOuowz7CVKyX07OOw6l4Q7dfXcPoB7UgUl02oHNz2Y4c-vFFEMZG/exec?action=getDetails&drug=${drug}`)
             .then(response => response.json())
-            .then(displayResult);
+            .then(displayResult)
+            .catch(error => console.error("Error fetching drug details:", error));
     } else {
-        loadFromDB().then(data => {
-            let result = data.find(d => d.name.toLowerCase() === drug.toLowerCase());
-            displayResult(result ? result.details : []);
+        openDB().then(db => {
+            let tx = db.transaction(storeName, "readonly");
+            let store = tx.objectStore(storeName);
+            let request = store.get(drug);
+            request.onsuccess = () => {
+                displayResult(request.result ? request.result.details : []);
+            };
         });
     }
 }
