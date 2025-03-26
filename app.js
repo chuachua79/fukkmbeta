@@ -13,7 +13,7 @@ function openDB() {
         request.onupgradeneeded = function (event) {
             let db = event.target.result;
             if (!db.objectStoreNames.contains(storeName)) {
-                db.createObjectStore(storeName, { keyPath: "name" });
+                db.createObjectStore(storeName, { keyPath: "id" }); // Use 'id' as key (Column A)
             }
         };
         request.onsuccess = () => resolve(request.result);
@@ -31,8 +31,9 @@ async function saveToDB(data) {
 
     data.forEach(item => {
         store.put({
-            name: item[0],   // Store the generic name as key
-            details: item    // Store the full drug details array
+            id: item[0],   // Use the index (Column A) as the key
+            name: item[1], // Generic Name (Column B) for easy search
+            details: item.slice(1)  // Store full row data (B to N)
         });
     });
 
@@ -58,12 +59,12 @@ async function loadDrugNames() {
             .then(async (latestData) => {
                 console.log("Updating IndexedDB...");
                 await saveToDB(latestData); // Update IndexedDB
-                allDrugs = latestData.map(drug => drug[0]); // Extract drug names
+                allDrugs = latestData.map(drug => drug[1]); // Extract drug names (Column B)
             })
             .catch(error => console.error("Error fetching drug names:", error));
     } else {
         loadFromDB().then(data => {
-            allDrugs = data.map(drug => drug.name);
+            allDrugs = data.map(drug => drug.name); // Extract stored drug names
         });
     }
 }
@@ -95,12 +96,13 @@ async function fetchDrugDetails(drug) {
             .then(displayResult)
             .catch(error => console.error("Error fetching drug details:", error));
     } else {
-        let data = await loadFromDB(); // Get all stored drugs
+        let data = await loadFromDB();
         console.log("IndexedDB Data:", data); // Debugging
 
+        // Find the entry where the Generic Name (Column B) matches
         let result = data.find(d => d.name.toLowerCase() === drug.toLowerCase());
 
-        if (result && result.details) {
+        if (result) {
             console.log("Retrieved Details:", result.details); // Debugging
             displayResult(result.details);
         } else {
