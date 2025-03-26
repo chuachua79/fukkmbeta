@@ -1,30 +1,24 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Drug Search</title>
-    <script defer src="app.js?v=1.0.2"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Drug Information</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <h2>Drug Search</h2>
-    <input type="text" id="search" placeholder="Enter Generic Name" onkeyup="searchDrug()">
-    <div id="suggestions"></div>
-    <div id="result"></div>
+  <h1>Drug Information Search</h1>
+  <input type="text" id="searchBox" placeholder="Search for a drug..." oninput="filterDrugs()">
+  <ul id="drugList"></ul>
+  <div id="drugDetails"></div>
 
-    <script>
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('service-worker.js')
-                .then(reg => {
-                    console.log("Service Worker Registered", reg);
-                })
-                .catch(err => console.error("Service Worker Registration Failed", err));
-
-            navigator.serviceWorker.addEventListener("controllerchange", () => {
-                console.log("New service worker activated, reloading...");
-                window.location.reload();
-            });
-        }
-    </script>
+  <script src="app.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("service-worker.js")
+        .then(() => console.log("Service Worker Registered"));
+    }
+  </script>
 </body>
 </html>
+
