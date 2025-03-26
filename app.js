@@ -1,84 +1,60 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbz1FVf-bQMlJPCyXOuowz7CVKyX07OOw6l4Q7dfXcPoB7UgUl02oHNz2Y4c-vFFEMZG/exec";
-
-document.addEventListener("DOMContentLoaded", () => {
-  fetchDrugNames();
-});
-
-function fetchDrugNames() {
-  fetch(API_URL + "?action=getNames")
-    .then(response => response.json())
-    .then(data => {
-      saveToIndexedDB("drugNames", data);
-      displayDrugList(data);
-    })
-    .catch(() => {
-      getFromIndexedDB("drugNames").then(displayDrugList);
-    });
-}
-
-function displayDrugList(data) {
-  let drugList = document.getElementById("drugList");
-  drugList.innerHTML = "";
-  data.forEach(drug => {
-    let li = document.createElement("li");
-    li.textContent = drug;
-    li.onclick = () => fetchDrugDetails(drug);
-    drugList.appendChild(li);
-  });
-}
-
-function fetchDrugDetails(drug) {
-  fetch(API_URL + "?action=getDetails&drug=" + encodeURIComponent(drug))
-    .then(response => response.json())
-    .then(data => {
-      saveToIndexedDB("drugDetails_" + drug, data);
-      displayDrugDetails(data);
-    })
-    .catch(() => {
-      getFromIndexedDB("drugDetails_" + drug).then(displayDrugDetails);
-    });
-}
-
-function displayDrugDetails(data) {
-  let detailsDiv = document.getElementById("drugDetails");
-  detailsDiv.innerHTML = `<h2>${data[0]}</h2><p>${data.slice(1).join(", ")}</p>`;
-}
-
-function filterDrugs() {
-  let query = document.getElementById("searchBox").value.toLowerCase();
-  getFromIndexedDB("drugNames").then(data => {
-    let filtered = data.filter(drug => drug.toLowerCase().includes(query));
-    displayDrugList(filtered);
-  });
-}
-
-// IndexedDB Helper Functions
-function saveToIndexedDB(storeName, data) {
-  let request = indexedDB.open("DrugDatabase", 1);
-  request.onupgradeneeded = (event) => {
-    let db = event.target.result;
-    if (!db.objectStoreNames.contains(storeName)) {
-      db.createObjectStore(storeName);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Medication Lookup</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      padding: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
     }
-  };
-  request.onsuccess = (event) => {
-    let db = event.target.result;
-    let transaction = db.transaction(storeName, "readwrite");
-    let store = transaction.objectStore(storeName);
-    store.put(data, "data");
-  };
-}
-
-function getFromIndexedDB(storeName) {
-  return new Promise((resolve, reject) => {
-    let request = indexedDB.open("DrugDatabase", 1);
-    request.onsuccess = (event) => {
-      let db = event.target.result;
-      let transaction = db.transaction(storeName, "readonly");
-      let store = transaction.objectStore(storeName);
-      let getRequest = store.get("data");
-      getRequest.onsuccess = () => resolve(getRequest.result || []);
-      getRequest.onerror = () => reject();
-    };
-  });
-}
+    .medication-card {
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      padding: 15px;
+      margin-bottom: 15px;
+      background-color: #f9f9f9;
+    }
+    .medication-header {
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: #0d6efd;
+    }
+    .medication-detail {
+      margin-bottom: 3px;
+    }
+    .offline-badge {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background-color: #dc3545;
+      color: white;
+      padding: 5px 10px;
+      border-radius: 5px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="offline-badge" id="offlineBadge">Offline Mode</div>
+  
+  <h1 class="mb-4">Medication Lookup</h1>
+  
+  <div class="row mb-4">
+    <div class="col-md-8">
+      <div class="input-group">
+        <input type="text" class="form-control" id="searchInput" placeholder="Search medication...">
+        <button class="btn btn-primary" id="searchButton">Search</button>
+      </div>
+    </div>
+  </div>
+  
+  <div id="searchResults"></div>
+  
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
