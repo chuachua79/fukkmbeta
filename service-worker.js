@@ -1,36 +1,37 @@
-const CACHE_NAME = 'med-lookup-v1';
-const STATIC_CACHE = [
-  '/',
-  '/index.html',
-  '/app.js',
-  'https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css',
-  'https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js'
+const CACHE_NAME = "drug-info-cache-v1";
+const FILES_TO_CACHE = [
+    "/", // Adjust for GitHub Pages if needed
+    "/index.html",
+    "/app.js",
+    "/style.css" // Add other necessary files
 ];
 
-// Install
-self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(STATIC_CACHE))
-  );
+self.addEventListener("install", event => {
+    event.waitUntil(
+        caches.open(CACHE_NAME).then(cache => {
+            return cache.addAll(FILES_TO_CACHE);
+        })
+    );
 });
 
-// Fetch
-self.addEventListener('fetch', (e) => {
-  e.respondWith(
-    caches.match(e.request)
-      .then(response => response || fetch(e.request))
-  );
+self.addEventListener("fetch", event => {
+    event.respondWith(
+        caches.match(event.request).then(response => {
+            return response || fetch(event.request);
+        }).catch(() => {
+            return caches.match("/index.html");
+        })
+    );
 });
 
-// Activate
-self.addEventListener('activate', (e) => {
-  e.waitUntil(
-    caches.keys().then(keys => 
-      Promise.all(keys.map(key => 
-        key !== CACHE_NAME ? caches.delete(key) : null
-      ))
-    )
-  );
+self.addEventListener("activate", event => {
+    event.waitUntil(
+        caches.keys().then(keys => {
+            return Promise.all(
+                keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))
+            );
+        })
+    );
 });
+
 
