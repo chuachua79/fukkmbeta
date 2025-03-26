@@ -1,11 +1,19 @@
 // Check if browser supports service workers
 if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('service-worker.js');
+    navigator.serviceWorker.register('service-worker.js')
+        .then(reg => console.log("Service Worker Registered", reg))
+        .catch(err => console.error("Service Worker Registration Failed", err));
+
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+        console.log("New service worker activated, reloading...");
+        window.location.reload();
+    });
 }
 
 // Open IndexedDB
 const dbName = "DrugDB";
 const storeName = "Drugs";
+let allDrugs = []; // Declare globally
 
 function openDB() {
     return new Promise((resolve, reject) => {
@@ -13,7 +21,7 @@ function openDB() {
         request.onupgradeneeded = function (event) {
             let db = event.target.result;
             if (!db.objectStoreNames.contains(storeName)) {
-                db.createObjectStore(storeName, { keyPath: "id" }); // Use 'id' as key (Column A)
+                db.createObjectStore(storeName, { keyPath: "name" });
             }
         };
         request.onsuccess = () => resolve(request.result);
@@ -21,19 +29,18 @@ function openDB() {
     });
 }
 
-// Save data to IndexedDB (Clears old data before saving new)
+// Save data to IndexedDB
 async function saveToDB(data) {
     let db = await openDB();
     let tx = db.transaction(storeName, "readwrite");
     let store = tx.objectStore(storeName);
     
-    store.clear(); // Ensure IndexedDB has only the latest data
+    store.clear(); // Clear old data
 
     data.forEach(item => {
         store.put({
-            id: item[0],   // Use the index (Column A) as the key
-            name: item[1], // Generic Name (Column B) for easy search
-            details: item.slice(1)  // Store full row data (B to N)
+            name: item[0],   // Store the generic name as key
+            details: item    // Store the full drug details array
         });
     });
 
@@ -58,20 +65,27 @@ async function loadDrugNames() {
             .then(response => response.json())
             .then(async (latestData) => {
                 console.log("Updating IndexedDB...");
-                await saveToDB(latestData); // Update IndexedDB
-                allDrugs = latestData.map(drug => drug[1]); // Extract drug names (Column B)
+                await saveToDB(latestData);
+                allDrugs = latestData.map(drug => drug[0]); 
+                console.log("Loaded Drug Names (Online):", allDrugs);
             })
             .catch(error => console.error("Error fetching drug names:", error));
     } else {
-        loadFromDB().then(data => {
-            allDrugs = data.map(drug => drug.name); // Extract stored drug names
-        });
+        let data = await loadFromDB();
+        allDrugs = data.map(drug => drug.name);
+        console.log("Loaded Drug Names (Offline):", allDrugs);
     }
 }
 
 // Search drug
 function searchDrug() {
     let input = document.getElementById("search").value.toLowerCase();
+    
+    if (!allDrugs || allDrugs.length === 0) {
+        console.warn("No drug data available.");
+        return;
+    }
+
     let suggestions = allDrugs.filter(drug => drug.toLowerCase().includes(input));
     
     let suggestionBox = document.getElementById("suggestions");
@@ -97,17 +111,13 @@ async function fetchDrugDetails(drug) {
             .catch(error => console.error("Error fetching drug details:", error));
     } else {
         let data = await loadFromDB();
-        console.log("IndexedDB Data:", data); // Debugging
-
-        // Find the entry where the Generic Name (Column B) matches
         let result = data.find(d => d.name.toLowerCase() === drug.toLowerCase());
 
-        if (result) {
-            console.log("Retrieved Details:", result.details); // Debugging
+        if (result && result.details) {
             displayResult(result.details);
         } else {
             console.warn("Drug not found in IndexedDB:", drug);
-            displayResult([]); // Show "No details found"
+            displayResult([]);
         }
     }
 }
@@ -125,5 +135,12 @@ function displayResult(data) {
 
     resultDiv.innerHTML = `<div style='font-family: Arial, sans-serif; line-height: 1.5;'>${formattedText}</div>`;
 }
+
+window.onload = async () => {
+    console.log("Loading drug names...");
+    await loadDrugNames();
+    console.log("Drug names loaded:", allDrugs);
+};
+
 
 window.onload = loadDrugNames;
