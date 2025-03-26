@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Drug Search</title>
-    <script defer src="app.js?v=1.0.3"></script>
+    <script defer src="app.js?v=1.0.2"></script>
 </head>
 <body>
     <h2>Drug Search</h2>
@@ -15,7 +15,9 @@
     <script>
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('service-worker.js')
-                .then(reg => console.log("Service Worker Registered", reg))
+                .then(reg => {
+                    console.log("Service Worker Registered", reg);
+                })
                 .catch(err => console.error("Service Worker Registration Failed", err));
 
             navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -26,5 +28,3 @@
     </script>
 </body>
 </html>
-
-
