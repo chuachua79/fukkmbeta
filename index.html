@@ -8,16 +8,16 @@
 </head>
 <body>
     <h2>Drug Search</h2>
-    <input type="text" id="search" placeholder="Enter Generic Name" onkeyup="searchDrug()">
-    <div id="suggestions"></div>
+
+    <input type="text" id="search" placeholder="Enter Generic Name" onkeyup="searchDrug()" autocomplete="off">
+    <div id="suggestions" style="border: 1px solid #ccc; max-width: 300px; display: none;"></div>
     <div id="result"></div>
 
     <script>
+        // Service Worker Registration
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('service-worker.js')
-                .then(reg => {
-                    console.log("Service Worker Registered", reg);
-                })
+                .then(reg => console.log("Service Worker Registered", reg))
                 .catch(err => console.error("Service Worker Registration Failed", err));
 
             navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -25,6 +25,35 @@
                 window.location.reload();
             });
         }
+
+        // Prevent form submission when pressing Enter in search
+        document.getElementById("search").addEventListener("keypress", function(event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+            }
+        });
+
+        // Improve Suggestion Box Visibility
+        function searchDrug() {
+            let input = document.getElementById("search").value.toLowerCase();
+            let suggestions = allDrugs.filter(drug => drug.toLowerCase().includes(input));
+            let suggestionBox = document.getElementById("suggestions");
+
+            suggestionBox.innerHTML = "";
+            suggestionBox.style.display = suggestions.length ? "block" : "none"; // Hide if empty
+
+            suggestions.forEach(drug => {
+                let div = document.createElement("div");
+                div.innerText = drug;
+                div.onclick = function() {
+                    document.getElementById("search").value = drug;
+                    suggestionBox.style.display = "none"; // Hide suggestions
+                    fetchDrugDetails(drug);
+                };
+                suggestionBox.appendChild(div);
+            });
+        }
     </script>
 </body>
 </html>
+
