@@ -1,217 +1,151 @@
-// Register Service Worker
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js')
-    .then((registration) => {
-      console.log('ServiceWorker registration successful');
-    })
-    .catch((err) => {
-      console.error('ServiceWorker registration failed: ', err);
-    });
-}
-
-// Database variables
-let db;
+// Configuration
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbx9-0yfVJoYePkPl9TQbM4hqYj9vKvFdRn9iu1hJj0KDh5QoXEyQFiVucWRrH4NZlNe/exec';
 const DB_NAME = 'MedicationDB';
 const DB_VERSION = 1;
 const STORE_NAME = 'medications';
 
-// Initialize the app when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
+let db;
+
+// Initialize app
+document.addEventListener('DOMContentLoaded', () => {
   initDB();
+  initServiceWorker();
+  setupEventListeners();
   checkOnlineStatus();
   
-  // Setup event listeners
-  document.getElementById('searchButton').addEventListener('click', handleSearch);
-  document.getElementById('searchInput').addEventListener('keyup', function(e) {
-    if (e.key === 'Enter') {
-      handleSearch();
-    }
-  });
-  
-  // Load data from Google Sheets when online
-  if (navigator.onLine) {
-    loadDataFromGoogleSheets();
-  }
+  if (navigator.onLine) syncData();
 });
 
-// Check online status and update UI
-function checkOnlineStatus() {
-  const offlineBadge = document.getElementById('offlineBadge');
-  if (navigator.onLine) {
-    offlineBadge.style.display = 'none';
-  } else {
-    offlineBadge.style.display = 'block';
+// Service Worker Registration
+function initServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => console.log('SW registered:', reg))
+      .catch(err => console.error('SW registration failed:', err));
   }
 }
 
-// Listen for online/offline events
-window.addEventListener('online', function() {
-  checkOnlineStatus();
-  loadDataFromGoogleSheets();
-});
-
-window.addEventListener('offline', function() {
-  checkOnlineStatus();
-});
-
-// Initialize IndexedDB
+// IndexedDB Setup
 function initDB() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     
-    request.onerror = function(event) {
-      console.error('Database error:', event.target.error);
-      reject('Database error');
-    };
+    request.onerror = (e) => reject('DB error:', e.target.error);
     
-    request.onsuccess = function(event) {
-      db = event.target.result;
-      console.log('Database initialized');
+    request.onsuccess = (e) => {
+      db = e.target.result;
       resolve(db);
     };
     
-    request.onupgradeneeded = function(event) {
-      const db = event.target.result;
+    request.onupgradeneeded = (e) => {
+      const db = e.target.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
-        const store = db.createObjectStore(STORE_NAME, { keyPath: 'Index' });
-        console.log('Database store created');
+        db.createObjectStore(STORE_NAME, { keyPath: 'Index' });
       }
     };
   });
 }
 
-// Load data from Google Sheets and store in IndexedDB
-function loadDataFromGoogleSheets() {
-  google.script.run.withSuccessHandler(function(response) {
-    if (response && response.medications && response.headers) {
-      // Store data in IndexedDB
-      storeMedicationsInDB(response.medications);
-      
-      // Store headers in localStorage for offline use
-      localStorage.setItem('medicationHeaders', JSON.stringify(response.headers));
-    }
-  }).withFailureHandler(function(error) {
-    console.error('Error loading data from Google Sheets:', error);
-  }).getAllMedicationData();
+// Online/Offline Detection
+function checkOnlineStatus() {
+  const isOffline = !navigator.onLine;
+  document.getElementById('offlineBadge').style.display = isOffline ? 'block' : 'none';
+  return !isOffline;
 }
 
-// Store medications in IndexedDB
-function storeMedicationsInDB(medications) {
-  if (!db) {
-    console.error('Database not initialized');
-    return;
+window.addEventListener('online', checkOnlineStatus);
+window.addEventListener('offline', checkOnlineStatus);
+
+// Data Synchronization
+async function syncData() {
+  try {
+    const response = await fetch(`${GAS_URL}?action=getAllData`);
+    const { headers, medications } = await response.json();
+    
+    await storeData(medications);
+    localStorage.setItem('medHeaders', JSON.stringify(headers));
+  } catch (err) {
+    console.error('Sync failed:', err);
   }
-  
-  const transaction = db.transaction([STORE_NAME], 'readwrite');
-  const store = transaction.objectStore(STORE_NAME);
-  
-  // Clear existing data
-  store.clear();
-  
-  // Add new data
-  medications.forEach(med => {
-    store.put(med);
+}
+
+// Store data in IndexedDB
+function storeData(medications) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    
+    store.clear();
+    medications.forEach(med => store.put(med));
+    
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
   });
-  
-  transaction.oncomplete = function() {
-    console.log('All medications stored in IndexedDB');
-  };
-  
-  transaction.onerror = function(event) {
-    console.error('Error storing medications:', event.target.error);
-  };
 }
 
-// Handle search functionality
-function handleSearch() {
-  const searchTerm = document.getElementById('searchInput').value.trim();
+// Search Functionality
+document.getElementById('searchBtn').addEventListener('click', performSearch);
+document.getElementById('searchInput').addEventListener('keyup', (e) => {
+  if (e.key === 'Enter') performSearch();
+});
+
+async function performSearch() {
+  const term = document.getElementById('searchInput').value.trim();
+  if (!term) return;
   
-  if (searchTerm === '') {
-    document.getElementById('searchResults').innerHTML = '<p>Please enter a search term</p>';
-    return;
-  }
-  
-  if (navigator.onLine) {
-    // Online - search via Google Apps Script
-    google.script.run.withSuccessHandler(function(results) {
-      displayResults(results);
-    }).withFailureHandler(function(error) {
-      console.error('Error searching online:', error);
-      // Fallback to offline search
-      searchMedicationsInDB(searchTerm);
-    }).searchMedications(searchTerm);
-  } else {
-    // Offline - search in IndexedDB
-    searchMedicationsInDB(searchTerm);
+  const results = await (navigator.onLine ? onlineSearch(term) : offlineSearch(term));
+  displayResults(results);
+}
+
+async function onlineSearch(term) {
+  try {
+    const response = await fetch(`${GAS_URL}?action=search&term=${encodeURIComponent(term)}`);
+    return await response.json();
+  } catch (err) {
+    console.log('Falling back to offline search');
+    return offlineSearch(term);
   }
 }
 
-// Search medications in IndexedDB
-function searchMedicationsInDB(searchTerm) {
-  if (!db) {
-    console.error('Database not initialized');
-    return;
-  }
+async function offlineSearch(term) {
+  const headers = JSON.parse(localStorage.getItem('medHeaders') || [];
+  const meds = await getAllFromDB();
   
-  const transaction = db.transaction([STORE_NAME], 'readonly');
-  const store = transaction.objectStore(STORE_NAME);
-  const request = store.getAll();
-  
-  request.onsuccess = function(event) {
-    const allMedications = event.target.result;
-    const lowerSearchTerm = searchTerm.toLowerCase();
-    
-    // Get headers from localStorage
-    const headers = JSON.parse(localStorage.getItem('medicationHeaders')) || [];
-    
-    // Filter medications
-    const results = allMedications.filter(med => {
-      return med[headers[0]] && med[headers[0]].toString().toLowerCase().includes(lowerSearchTerm);
-    });
-    
-    displayResults(results);
-  };
-  
-  request.onerror = function(event) {
-    console.error('Error searching in IndexedDB:', event.target.error);
-    document.getElementById('searchResults').innerHTML = '<p>Error searching medications</p>';
-  };
+  return meds.filter(med => 
+    med[headers[0]]?.toString().toLowerCase().includes(term.toLowerCase())
+  );
 }
 
-// Display search results
+function getAllFromDB() {
+  return new Promise((resolve) => {
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const request = tx.objectStore(STORE_NAME).getAll();
+    
+    request.onsuccess = (e) => resolve(e.target.result || []);
+    request.onerror = () => resolve([]);
+  });
+}
+
+// Display Results
 function displayResults(medications) {
-  const resultsContainer = document.getElementById('searchResults');
+  const container = document.getElementById('resultsContainer');
+  const headers = JSON.parse(localStorage.getItem('medHeaders')) || [];
   
-  if (medications.length === 0) {
-    resultsContainer.innerHTML = '<p>No medications found</p>';
+  if (!medications.length) {
+    container.innerHTML = '<div class="alert alert-info">No medications found</div>';
     return;
   }
   
-  // Get headers from localStorage or use default
-  const headers = JSON.parse(localStorage.getItem('medicationHeaders')) || 
-    ['Index', 'Name', 'Generic Name', 'Class', 'Indication', 'Dosage', 'Administration', 
-     'Contraindications', 'Side Effects', 'Precautions', 'Interactions', 'Pregnancy', 
-     'Monitoring', 'Notes'];
-  
-  let html = '';
-  
-  medications.forEach(med => {
-    html += `<div class="medication-card">`;
-    
-    // Display each field in its own row
-    headers.forEach(header => {
-      if (med[header] !== undefined && med[header] !== '') {
-        html += `
-          <div class="medication-detail">
-            <span class="medication-header">${header}:</span>
+  container.innerHTML = medications.map(med => `
+    <div class="card medication-card mb-3">
+      <div class="card-body">
+        ${headers.map(header => med[header] ? `
+          <div class="med-detail">
+            <span class="med-header">${header}:</span>
             <span>${med[header]}</span>
           </div>
-        `;
-      }
-    });
-    
-    html += `</div>`;
-  });
-  
-  resultsContainer.innerHTML = html;
+        ` : '').join('')}
+      </div>
+    </div>
+  `).join('');
 }
